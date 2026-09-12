@@ -1,0 +1,57 @@
+engine:
+  # Base thresholds mapped directly from simulator C-structs
+  limits:
+    rpm:
+      lo: 0.0
+      alert_lo: 300.0   # near flame-out
+      warn_lo: 500.0    # idle underspeed
+      warn_hi: 2900.0
+      alert_hi: 3050.0
+      hi: 3200.0
+    cht_c:
+      lo: 0.0
+      warn_hi: 210.0
+      alert_hi: 240.0
+      hi: 260.0
+    egt_c:
+      lo: 0.0
+      warn_hi: 780.0
+      alert_hi: 850.0
+      hi: 900.0
+    oil_c:
+      lo: 0.0
+      warn_hi: 110.0
+      alert_hi: 125.0
+      hi: 140.0
+    fuel_press_kpa:
+      lo: 0.0
+      alert_lo: 200.0
+      warn_lo: 250.0
+      warn_hi: 360.0
+      hi: 400.0
+    oil_press_kpa:
+      lo: 0.0
+      alert_lo: 120.0
+      warn_lo: 150.0
+      warn_hi: 600.0
+      alert_hi: 620.0
+      hi: 800.0
+    bus_v:
+      lo: 10.0
+      alert_lo: 11.8
+      warn_lo: 12.8
+      warn_hi: 14.9
+      alert_hi: 15.4
+      hi: 16.0
+    batt_soc:
+      lo: 0.0
+      alert_lo: 0.18
+      warn_lo: 0.35
+      hi: 1.0
+    lambda:
+      lo: 0.70
+      alert_lo: 0.80    # rich misfire edge
+      warn_lo: 0.90
+      warn_hi: 1.10
+      alert_hi: 1.55    # lean misfire edge
+      hi: 1.70
