@@ -1,4 +1,4 @@
 sim_paths:
-  raw_sim_data : "data/raw/run1.csv"
-  validated_sim_data : "data/validated/run1.csv"
-  downsampled_sim_data : "data/downsampled/run1.csv"
+  raw_sim : "data/raw/run1.csv"
+  validated_sim : "data/validated/run1.parquet"
+  downsampled_sim : "data/downsampled/run1.parquet"

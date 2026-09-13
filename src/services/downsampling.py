@@ -12,7 +12,7 @@ class SimulationDownsampler:
         self.default_buckets = default_buckets
         self.input_path = input_path
         self.artifact_path = artifact_path
-        self.df = pl.read_csv(self.input_path)
+        self.df = pl.read_parquet(self.input_path)
         self.logger = configLogger(self.__class__.__name__)
         self.logger.info(f"Simulation Downsampler initialized with {self.default_buckets} default buckets.")
 
@@ -21,7 +21,7 @@ class SimulationDownsampler:
         df.write_parquet(self.artifact_path)
         self.logger.info(f"Downsampled df saved at : {self.artifact_path}")
         
-    def downsample_m4(self, n_buckets: int) -> None:
+    def downsample_m4(self, n_buckets: int = None) -> None:
             """
             Downsamples multi-channel aero engine simulation using a Synthetic M4 algorithm.
             Guarantees retention of physical Min/Max spikes.

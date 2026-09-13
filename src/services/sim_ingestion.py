@@ -29,6 +29,7 @@ class SimulationIngestor:
         # Zero-fill remaining nulls (e.g., missing data at t=0)
         df = df.fill_null(0.0)
         
+        df = df.rename({"t":"time"})
         return df
 
     def ingest_and_save(self) -> None:

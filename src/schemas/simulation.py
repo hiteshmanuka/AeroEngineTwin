@@ -2,7 +2,7 @@ import polars as pl
 from pydantic import BaseModel
 
 class SimulationRow(BaseModel):
-    time: float
+    t: float
     throttle: float
     alt_m: float
     ambient_c: float
