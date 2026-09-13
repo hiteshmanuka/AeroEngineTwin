@@ -1,3 +1,4 @@
-from .sim_ingestion import ingest_simulation_csv, SimulationIngestionError
+from .sim_ingestion import SimulationIngestor, SimulationIngestionError
+from .downsampling import SimulationDownsampler
 
-__all__ = ['ingest_simulation_csv', 'SimulationIngestionError']
+__all__ = ['SimulationIngestor', 'SimulationIngestionError', 'SimulationDownsampler']
