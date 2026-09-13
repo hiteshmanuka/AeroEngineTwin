@@ -22,7 +22,14 @@ class SimulationIngestor:
     def _clean_data(self, df: pl.DataFrame) -> pl.DataFrame:
         """Applies physics-safe data cleaning rules."""
         self.logger.debug(f"Applying data cleaning to {df.height} rows...")
-        
+        # Inside your ingestor's _clean_data method
+        initial_rows = df.height
+        null_counts = df.null_count()
+        total_nulls = sum(null_counts.row(0))
+
+        if total_nulls > 0:
+            self.logger.warning(f"Schema Audit: Found {total_nulls} corrupted/null fields across {initial_rows} rows. Initiating forward-fill coercion.")
+
         # Forward-fill minor sensor drops
         df = df.fill_null(strategy="forward")
         
