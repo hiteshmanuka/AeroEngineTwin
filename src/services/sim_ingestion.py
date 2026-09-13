@@ -1,8 +1,7 @@
-from src.utils.logger import configLogger
+from src.utils import configLogger
 import polars as pl
 from pathlib import Path
-from io import BytesIO
-from schemas.simulation import SIMULATION_SCHEMA
+from src.schemas import SIMULATION_SCHEMA
 
 logger = configLogger(__file__)
 
@@ -24,7 +23,6 @@ def ingest_simulation_csv(file_path: Path) -> pl.DataFrame:
         df = pl.read_csv(
             file_path,
             schema_overrides=SIMULATION_SCHEMA,
-            strict=True, #type:ignore
             null_values=["NA", "NaN", "null", ""],
             encoding='UTF-16'
         )
