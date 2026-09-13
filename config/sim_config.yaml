@@ -55,3 +55,6 @@ engine:
       warn_hi: 1.10
       alert_hi: 1.55    # lean misfire edge
       hi: 1.70
+
+downsampling:
+  buckets : 1500

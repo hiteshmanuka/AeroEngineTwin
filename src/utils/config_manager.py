@@ -31,6 +31,10 @@ class ConfigManager:
     @property
     def gradients(self) -> Box:
         return self._config.engine.gradients
+
+    @property
+    def downsampling(self) -> Box:
+        return self._config.downsampling
     
     @property
     def config(self) -> Box:
