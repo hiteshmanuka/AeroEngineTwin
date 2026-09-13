@@ -5,6 +5,7 @@ services:
     image: timescale/timescaledb:latest-pg16
     container_name: aeroenginetwin-timescaledb
     restart: unless-stopped
+    env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -21,7 +22,8 @@ services:
 
   seaweedfs:
     image: chrislusf/seaweedfs:latest
-    container_name: aeroenginetwin-seaweedfs
+    env_file: .env
+    container_name: ${SEAWEED_CONTAINER}
     restart: unless-stopped
     command: "server -s3 -dir=/data -master.volumeSizeLimitMB=1024"
     ports:
@@ -30,6 +32,18 @@ services:
       - "8333:8333"   # S3 API gateway
     volumes:
       - seaweedfs_data:/data
+  
+  infra-init:
+    build: .
+    container_name: aeroenginetwin-infra-init
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      seaweedfs:
+        condition: service_started
+    env_file: .env
+    command: python ${TIMESCALE_INIT} && python ${SEAWEED_INIT}
+    restart: "no"
 
 volumes:
   timescaledb_data:
