@@ -219,3 +219,5 @@ __marimo__/
 
 data/
 flow.txt
+artifacts.yaml
+sim_config.yaml

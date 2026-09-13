@@ -23,6 +23,9 @@ class SimulationDownsampler:
         query_start_ms = time.perf_counter()
 
         try:
+            # --- PHASE 1: I/O & Filtering ---
+            io_start_ms = time.perf_counter()
+
             # 1. LAZY EXECUTION: Scan the parquet and filter before pulling into RAM
             lazy_query = (
                 pl.scan_parquet(self.artifact_path)
@@ -31,26 +34,31 @@ class SimulationDownsampler:
             
             # Collect only the requested time slice into memory
             df_slice = lazy_query.collect()
+            io_duration = (time.perf_counter() - io_start_ms) * 1000
             slice_rows = df_slice.height
-            
+
+            self.logger.debug(f"I/O Profile: Read {slice_rows} rows in {io_duration:.2f}ms.")
             self.logger.debug(f"Retrieved {slice_rows} raw rows for requested time window.")
 
             if slice_rows == 0:
                 self.logger.warning("Query returned 0 rows. Check time bounds.")
                 return df_slice
 
+            # --- PHASE 2: Bypass Check ---
             # 2. THE BYPASS SWITCH: Fixes the 1:1 compression ratio bug
             # M4 returns 4 points per bucket. If we have fewer rows than the max possible 
             # downsampled output, M4 is useless. Return raw data immediately.
             max_m4_points = target_buckets * 4
             
             if slice_rows <= max_m4_points:
+                total_duration = (time.perf_counter() - query_start_ms) * 1000
                 self.logger.info(
-                    f"Bypass triggered: Data density ({slice_rows} rows) is lower than UI limit "
-                    f"({max_m4_points} points). Returning raw full-resolution data."
+                    f"Bypass triggered: {slice_rows} rows <= {max_m4_points} limit. "
+                    f"Total query time: {total_duration:.2f}ms (I/O: {io_duration:.2f}ms | M4: Skipped)"
                 )
                 return df_slice
 
+            # --- PHASE 3: M4 Aggregation ---
             # 3. M4 AGGREGATION: With Performance Instrumentation
             self.logger.debug(f"Data density exceeds UI limits. Commencing M4 Aggregation...")
             agg_start_ms = time.perf_counter()
@@ -110,8 +118,9 @@ class SimulationDownsampler:
             total_duration = (time.perf_counter() - query_start_ms) * 1000
             
             self.logger.info(
-                f"M4 Aggregation complete. Compressed {slice_rows} -> {final_df.height} rows. "
-                f"Agg time: {agg_duration:.2f}ms | Total query time: {total_duration:.2f}ms"
+                f"Query Profile -> Total: {total_duration:.2f}ms | "
+                f"I/O & Filter: {io_duration:.2f}ms | M4 Agg: {agg_duration:.2f}ms | "
+                f"Compression: {slice_rows} -> {final_df.height} rows."
             )
             
             return final_df
