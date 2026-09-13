@@ -57,4 +57,4 @@ engine:
       hi: 1.70
 
 downsampling:
-  buckets : 1500
+  buckets : 100
