@@ -60,13 +60,16 @@ class SimulationIngestor:
                 
             # Clean the dataframe
             clean_df = self._clean_data(df)
-            
-            # Save as an artifact (Parquet preserves the Float32 memory optimization natively)
-            self.logger.debug(f"Writing clean artifact to {self.artifact_path}...")
-            
+
+            # EXPLICIT SORT: Guarantees row-group statistics don't overlap.
+            # This enables Polars to skip reading 90% of the file during zoomed-in queries.
+            clean_df = clean_df.sort("time")
+
+            self.logger.debug(f"Writing sorted artifact to {self.artifact_path}...")
             # Create parent directories if they don't exist
             self.artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            clean_df.write_parquet(self.artifact_path)
+            # Ensure statistics are generated for predicate pushdown
+            clean_df.write_parquet(self.artifact_path, statistics=True)
             
             self.logger.info(f"Successfully generated clean telemetry artifact: {self.artifact_path}")
             
