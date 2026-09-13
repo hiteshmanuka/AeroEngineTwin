@@ -1,58 +1,76 @@
-from src.utils import configLogger
-import polars as pl
 from pathlib import Path
+import polars as pl
+from src.utils import configLogger
 from src.schemas import SIMULATION_SCHEMA
-
-logger = configLogger(__file__)
 
 class SimulationIngestionError(Exception):
     """Custom exception for ingestion failures."""
     pass
 
-def ingest_simulation_csv(file_path: Path) -> pl.DataFrame:
+class SimulationIngestor:
     """
-    Ingests a CSV file into a highly optimized Polars DataFrame.
-    Enforces Float32 schema and handles missing values.
+    Handles the ingestion, validation, cleaning, and artifact generation 
+    of raw aero engine telemetry data.
     """
-    logger.info(f"Starting simulation ingestion for file: {file_path}")
     
-    try:
-        logger.debug("Reading CSV with Polars and applying SIMULATION_SCHEMA...")
+    def __init__(self, input_path: Path, artifact_path: Path):
+        self.input_path = input_path
+        self.artifact_path = artifact_path
+        self.logger = configLogger(self.__class__.__name__)
+        self.logger.info(f"Initialized ingestor. Input: {self.input_path.name} | Artifact: {self.artifact_path.name}")
+
+    def _clean_data(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Applies physics-safe data cleaning rules."""
+        self.logger.debug(f"Applying data cleaning to {df.height} rows...")
         
-        # read_csv with strict schema enforces column names and types instantly
-        df = pl.read_csv(
-            file_path,
-            schema_overrides=SIMULATION_SCHEMA,
-            null_values=["NA", "NaN", "null", ""],
-            encoding='UTF-16'
-        )
-        
-        # Check if the DataFrame is empty
-        if df.height == 0:
-            logger.error(f"Ingestion failed: The simulation file '{file_path}' is empty.")
-            raise SimulationIngestionError("The uploaded simulation file is empty.")
-            
-        logger.debug(f"CSV read successfully. Rows: {df.height}. Applying data cleaning...")
-        
-        # Basic Data Cleaning: Forward-fill missing sensor data up to a limit
-        # (e.g., if a sensor drops for a fraction of a second, carry the last value forward)
+        # Forward-fill minor sensor drops
         df = df.fill_null(strategy="forward")
         
-        # If there are still nulls (e.g., at the very start of the file), fill with 0.0
+        # Zero-fill remaining nulls (e.g., missing data at t=0)
         df = df.fill_null(0.0)
         
-        logger.info(f"Successfully ingested and cleaned simulation data. Final shape: {df.shape}")
         return df
 
-    except pl.exceptions.ColumnNotFoundError as e:
-        logger.error(f"ColumnNotFoundError during ingestion: {str(e)}")
-        raise SimulationIngestionError(f"Missing required sensor columns: {str(e)}")
+    def ingest_and_save(self) -> None:
+        """
+        Executes the ingestion pipeline and saves the clean data as a Parquet artifact.
+        """
+        self.logger.info(f"Starting ingestion process for: {self.input_path}")
         
-    except pl.exceptions.SchemaError as e:
-        logger.error(f"SchemaError during ingestion: {str(e)}")
-        raise SimulationIngestionError(f"Data type mismatch in simulation file: {str(e)}")
-        
-    except Exception as e:
-        # logger.exception automatically includes the full traceback for debugging
-        logger.exception("Unexpected error occurred during simulation ingestion.")
-        raise SimulationIngestionError(f"Failed to parse telemetry data: {str(e)}")
+        try:
+            self.logger.debug("Reading CSV and enforcing SIMULATION_SCHEMA...")
+            df = pl.read_csv(
+                self.input_path,
+                schema_overrides=SIMULATION_SCHEMA,
+                null_values=["NA", "NaN", "null", ""],
+                encoding='UTF-16'
+            )
+            
+            if df.height == 0:
+                self.logger.error("Ingestion failed: Dataframe is empty.")
+                raise SimulationIngestionError("The uploaded simulation file is empty.")
+                
+            # Clean the dataframe
+            clean_df = self._clean_data(df)
+            
+            # Save as an artifact (Parquet preserves the Float32 memory optimization natively)
+            self.logger.debug(f"Writing clean artifact to {self.artifact_path}...")
+            
+            # Create parent directories if they don't exist
+            self.artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            clean_df.write_parquet(self.artifact_path)
+            
+            self.logger.info(f"Successfully generated clean telemetry artifact: {self.artifact_path}")
+            
+
+        except pl.exceptions.ColumnNotFoundError as e:
+            self.logger.error(f"Missing required sensor columns: {str(e)}")
+            raise SimulationIngestionError(f"Missing required sensor columns: {str(e)}")
+            
+        except pl.exceptions.SchemaError as e:
+            self.logger.error(f"Data type mismatch: {str(e)}")
+            raise SimulationIngestionError(f"Data type mismatch in simulation file: {str(e)}")
+            
+        except Exception as e:
+            self.logger.exception("Unexpected error occurred during simulation ingestion.")
+            raise SimulationIngestionError(f"Failed to parse telemetry data: {str(e)}")

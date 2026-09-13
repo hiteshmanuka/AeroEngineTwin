@@ -1,0 +1,4 @@
+data:
+  raw_sim_data : "data/raw/run1.csv"
+  validated_sim_data : "data/validated/run1.csv"
+  downsampled_sim_data : "data/downsampled/run1.csv"
