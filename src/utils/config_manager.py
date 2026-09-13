@@ -1,4 +1,5 @@
 import yaml
+from box import Box
 from pathlib import Path
 from typing import Dict, Any
 
@@ -17,16 +18,20 @@ class ConfigManager:
             raise FileNotFoundError(f"Configuration file not found at {config_path}")
         
         with open(path, "r") as file:
-            self._config = yaml.safe_load(file)
+            self._config = Box(yaml.safe_load(file), default_box=True)
 
     @property
-    def limits(self) -> Dict[str, Dict[str, float]]:
-        return self._config.get("engine", {}).get("limits", {})
+    def limits(self) -> Box:
+        return self._config.engine.limits
 
     @property
-    def tolerances(self) -> Dict[str, float]:
-        return self._config.get("engine", {}).get("tolerances", {})
+    def tolerances(self) -> Box:
+        return self._config.engine.tolerances
 
     @property
-    def gradients(self) -> Dict[str, float]:
-        return self._config.get("engine", {}).get("gradients", {})
+    def gradients(self) -> Box:
+        return self._config.engine.gradients
+    
+    @property
+    def config(self) -> Box:
+        return self._config
