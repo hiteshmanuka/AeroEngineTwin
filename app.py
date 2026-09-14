@@ -13,6 +13,8 @@ from config import (DATABASE_URL,
 
 from src.utils import configLogger
 
+from src.routers import simulation_router
+
 logger = configLogger("fastapi.app")
 
 @asynccontextmanager
@@ -46,6 +48,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(simulation_router)
 
 @app.get("/")
 async def root():
