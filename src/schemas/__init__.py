@@ -1,4 +1,4 @@
-from .simulation import SIMULATION_SCHEMA, SimulationRow
+from .sim_table import SIMULATION_SCHEMA, SimulationRow
 from .sim_payload import (TimeRange, ResolutionMeta, SimulationData, 
                             SimulationMetadata, SimulationResponse)
 
