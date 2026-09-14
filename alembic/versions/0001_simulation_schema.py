@@ -25,7 +25,7 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.Column("time", sa.Double(), nullable=False),
+        sa.Column("t", sa.Double(), nullable=False),
         sa.Column("throttle", sa.REAL()),
         sa.Column("alt_m", sa.REAL()),
         sa.Column("ambient_c", sa.REAL()),
@@ -76,7 +76,7 @@ def upgrade() -> None:
     # Serves the actual /simulations query pattern:
     # WHERE run_id = X AND time BETWEEN a AND b
     op.create_index(
-        "ix_simulations_run_time", "simulations", ["run_id", "time"]
+        "ix_simulations_run_time", "simulations", ["run_id", "t"]
     )
 
 
