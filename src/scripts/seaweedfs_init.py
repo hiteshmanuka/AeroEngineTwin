@@ -3,6 +3,9 @@ from botocore.exceptions import ClientError
 from botocore.client import Config
 from src.utils import configLogger
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 logger = configLogger(__file__)
 
