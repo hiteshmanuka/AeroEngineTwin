@@ -8,9 +8,9 @@ from src.services import SimulationDownsampler
 from src.utils import serialize_telemetry
 from src.schemas import SimulationResponse
 
-from config import ENCODING, SIM_BUCKET
-MIN_BUCKETS, MAX_BUCKETS, DEFAULT_BUCKETS = 50, 2000, 800
-DEFAULT_START, DEFAULT_END = 0.0, 3600.0
+from config import (ENCODING, SIM_BUCKET, 
+                    MIN_BUCKETS, MAX_BUCKETS, DEFAULT_BUCKETS, 
+                    DEFAULT_START, DEFAULT_END)
 
 router = APIRouter()
 
@@ -18,7 +18,7 @@ router = APIRouter()
 async def ingest_run(request: Request, run_id: str = Form(...), file: UploadFile = File(...)):
     raw_bytes = await file.read()  # read once, reused for both sinks below
 
-    ingestor = SimulationIngestor()
+    ingestor = SimulationIngestor(encoding=ENCODING)
 
     try:
         row_count = await ingestor.ingest_to_db(
