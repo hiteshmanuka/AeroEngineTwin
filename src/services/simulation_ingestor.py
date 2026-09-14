@@ -37,10 +37,10 @@ class SimulationIngestor:
             raw_bytes = source.read()
 
         try:
-            decoded_text = raw_bytes.decode("utf-16")
+            decoded_text = raw_bytes.decode(self.encoding)
         except UnicodeDecodeError as e:
-            self.logger.error(f"UTF-16 decode failed: {e}")
-            raise SimulationIngestionError(f"File is not valid UTF-16: {e}")
+            self.logger.error(f"{self.encoding} decode failed: {e}")
+            raise SimulationIngestionError(f"File is not valid {self.encoding}: {e}")
 
         df = pl.read_csv(
             io.StringIO(decoded_text),
