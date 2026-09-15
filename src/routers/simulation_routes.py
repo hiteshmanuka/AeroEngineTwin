@@ -1,5 +1,5 @@
 import uuid
-from fastapi import APIRouter, UploadFile, File, HTTPException, Request, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, Query
 import io
 import polars as pl
 import time
@@ -24,7 +24,7 @@ def _parse_run_id(run_id: str) -> uuid.UUID:
 
 
 @router.post("/ingest")
-async def ingest_run(request: Request, file: UploadFile = File(...)):
+async def ingest_run(request: Request, file: UploadFile = File(...), session_name: str = Form(...),):
     run_id = uuid.uuid4()
 
     raw_bytes = await file.read()  # read once, reused for both sinks below
@@ -33,7 +33,7 @@ async def ingest_run(request: Request, file: UploadFile = File(...)):
 
     try:
         row_count = await ingestor.ingest_to_db(
-            run_id, io.BytesIO(raw_bytes), request.app.state.db_pool
+            run_id, session_name, io.BytesIO(raw_bytes), request.app.state.db_pool
         )
     except SimulationIngestionError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -49,6 +49,7 @@ async def ingest_run(request: Request, file: UploadFile = File(...)):
         ingestor.logger.error(f"Raw archive to SeaweedFS failed for run_id={run_id}: {e}")
         return {
             "run_id": str(run_id),
+            "session_name": session_name,
             "rows_ingested": row_count,
             "archived": False,
             "archive_error": str(e),
@@ -62,19 +63,17 @@ async def ingest_run(request: Request, file: UploadFile = File(...)):
             archive_key, run_id,
         )
 
-    return {"run_id": str(run_id), "rows_ingested": row_count, "archived": True}
+    return {"run_id": str(run_id), "session_name": session_name, "rows_ingested": row_count, "archived": True}
 
 
 @router.get("/runs")
 async def list_runs(request: Request):
-    """
-    Lists every ingested run's summary metadata — reads only
-    simulation_runs, never touches the simulations hypertable.
-    """
+    """Lists every ingested run's metadata — reads only simulation_runs,
+    never touches the simulations hypertable."""
     async with request.app.state.db_pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT run_id, ingested_at, row_count, t_start, t_end, archived, archive_key
+            SELECT run_id, session_name, row_count, t_start, t_end, archived, archive_key
             FROM simulation_runs
             ORDER BY ingested_at DESC;
             """
@@ -83,7 +82,7 @@ async def list_runs(request: Request):
     return [
         {
             "run_id": str(r["run_id"]),
-            "ingested_at": r["ingested_at"].isoformat(),
+            "session_name": r["session_name"],
             "row_count": r["row_count"],
             "t_start": r["t_start"],
             "t_end": r["t_end"],
@@ -150,12 +149,13 @@ async def delete_run(request: Request, run_id: str):
 
     async with request.app.state.db_pool.acquire() as conn:
         async with conn.transaction():
-            result = await conn.execute("DELETE FROM simulations WHERE run_id = $1;", parsed_run_id)
-            await conn.execute("DELETE FROM simulation_runs WHERE run_id = $1;", parsed_run_id)
+            deleted_run = await conn.fetchrow(
+                "DELETE FROM simulation_runs WHERE run_id = $1 RETURNING row_count;",
+                parsed_run_id,
+            )
+            await conn.execute("DELETE FROM simulation WHERE run_id = $1;", parsed_run_id)
 
-    deleted_rows = int(result.split(" ")[-1])
-
-    if deleted_rows == 0:
+    if deleted_run is None:
         raise HTTPException(404, f"No data found for run_id={run_id}")
 
     archive_deleted = True
@@ -166,7 +166,11 @@ async def delete_run(request: Request, run_id: str):
         archive_deleted = False
         archive_error = str(e)
 
-    response = {"run_id": run_id, "rows_deleted": deleted_rows, "archive_deleted": archive_deleted}
+    response = {
+        "run_id": run_id,
+        "rows_deleted": deleted_run["row_count"],
+        "archive_deleted": archive_deleted,
+    }
     if archive_error:
         response["archive_error"] = archive_error
     return response

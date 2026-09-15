@@ -88,12 +88,13 @@ class SimulationIngestor:
             raise SimulationIngestionError(f"Failed to parse telemetry data: {str(e)}")
 
     async def ingest_to_db(
-        self, run_id: uuid.UUID, source: Union[Path, BinaryIO], pool: asyncpg.Pool
+        self, run_id: uuid.UUID, session_name: str, source: Union[Path, BinaryIO], pool: asyncpg.Pool
     ) -> int:
         """
-        FastAPI path — validates/cleans, then bulk-inserts into the
-        `simulations` hypertable via asyncpg. and writes a matching
-        summary row into `simulation_runs` in the same transaction.
+        Writes both the simulation_runs summary row and the bulk telemetry
+        insert in one transaction. No FK between the tables, so order
+        between the two statements doesn't matter for correctness — kept
+        as summary-row-first purely for readability.
         """
         self.logger.info(f"Starting DB ingestion for run_id={run_id}")
         clean_df = self._validate_and_clean(source)
@@ -113,20 +114,15 @@ class SimulationIngestor:
         try:
             async with pool.acquire() as conn:
                 async with conn.transaction():
-                    # App-layer dedup, replacing the DB-level UNIQUE constraint
-                    # Timescale rejected on this hypertable — re-ingesting a
-                    # run overwrites rather than duplicating.
-                    await conn.execute("DELETE FROM simulations WHERE run_id = $1;", run_id)
-                    await conn.copy_records_to_table(
-                        "simulations", records=records, columns=columns
-                    )
-                    await conn.execute("DELETE FROM simulation_runs WHERE run_id = $1;", run_id)
                     await conn.execute(
                         """
-                        INSERT INTO simulation_runs (run_id, row_count, t_start, t_end)
-                        VALUES ($1, $2, $3, $4);
+                        INSERT INTO simulation_runs (run_id, session_name, row_count, t_start, t_end)
+                        VALUES ($1, $2, $3, $4, $5);
                         """,
-                        run_id, row_count, t_start, t_end
+                        run_id, session_name, row_count, t_start, t_end
+                    )
+                    await conn.copy_records_to_table(
+                        "simulations", records=records, columns=columns
                     )
         except asyncpg.PostgresError as e:
             self.logger.exception("Database write failed during ingestion.")
