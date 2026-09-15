@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
+from fastapi.middleware.gzip import GZipMiddleware
+import uvicorn
 
 import boto3
 from botocore.client import Config
@@ -49,8 +51,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.include_router(simulation_router)
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the App!"}
+
+if __name__ == "__main__":
+    uvicorn.run("app:app", host='0.0.0.0', port=8000, reload=True)
