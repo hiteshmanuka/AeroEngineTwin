@@ -9,7 +9,7 @@ from src.services import SimulationDownsampler
 from src.utils import serialize_telemetry
 from src.schemas import SimulationResponse, SENSOR_COLUMNS
 
-from config import (ENCODING, SIM_BUCKET,
+from config import (SIM_BUCKET,
                     MIN_BUCKETS, MAX_BUCKETS, DEFAULT_BUCKETS,
                     DEFAULT_START, DEFAULT_END)
 
@@ -17,8 +17,6 @@ router = APIRouter()
 
 
 def _parse_run_id(run_id: str) -> uuid.UUID:
-    """Path params always arrive as str — cast to uuid.UUID once here so
-    every query below hits the native UUID column with the right type."""
     try:
         return uuid.UUID(run_id)
     except ValueError:
@@ -27,13 +25,11 @@ def _parse_run_id(run_id: str) -> uuid.UUID:
 
 @router.post("/ingest")
 async def ingest_run(request: Request, file: UploadFile = File(...)):
-    # Generated once per request, shared across every row of this run's
-    # bulk insert below — this is why it's application-side, not a DB default.
     run_id = uuid.uuid4()
 
     raw_bytes = await file.read()  # read once, reused for both sinks below
 
-    ingestor = SimulationIngestor(encoding=ENCODING)
+    ingestor = SimulationIngestor()
 
     try:
         row_count = await ingestor.ingest_to_db(
@@ -42,10 +38,11 @@ async def ingest_run(request: Request, file: UploadFile = File(...)):
     except SimulationIngestionError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
+    archive_key = f"{run_id}.parquet"
     try:
         request.app.state.s3_client.put_object(
             Bucket=SIM_BUCKET,
-            Key=f"{run_id}.csv",
+            Key=archive_key,
             Body=raw_bytes,
         )
     except Exception as e:
@@ -57,7 +54,44 @@ async def ingest_run(request: Request, file: UploadFile = File(...)):
             "archive_error": str(e),
         }
 
+    # Only flip archived/archive_key once the S3 write actually succeeded —
+    # this is why it isn't part of the ingest_to_db transaction above.
+    async with request.app.state.db_pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE simulation_runs SET archived = TRUE, archive_key = $1 WHERE run_id = $2;",
+            archive_key, run_id,
+        )
+
     return {"run_id": str(run_id), "rows_ingested": row_count, "archived": True}
+
+
+@router.get("/runs")
+async def list_runs(request: Request):
+    """
+    Lists every ingested run's summary metadata — reads only
+    simulation_runs, never touches the simulations hypertable.
+    """
+    async with request.app.state.db_pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT run_id, ingested_at, row_count, t_start, t_end, archived, archive_key
+            FROM simulation_runs
+            ORDER BY ingested_at DESC;
+            """
+        )
+
+    return [
+        {
+            "run_id": str(r["run_id"]),
+            "ingested_at": r["ingested_at"].isoformat(),
+            "row_count": r["row_count"],
+            "t_start": r["t_start"],
+            "t_end": r["t_end"],
+            "archived": r["archived"],
+            "archive_key": r["archive_key"],
+        }
+        for r in rows
+    ]
 
 
 @router.get("/runs/{run_id}/telemetry", response_model=SimulationResponse)
@@ -107,15 +141,17 @@ async def get_telemetry(
 @router.delete("/runs/{run_id}")
 async def delete_run(request: Request, run_id: str):
     """
-    Deletes a simulation's rows from TimescaleDB and its archived CSV
-    from SeaweedFS. Exposed as an endpoint for future use, but not wired
-    into anything yet — use src/scripts/delete_simulation.py from the
-    terminal for now.
+    Deletes a simulation's rows from TimescaleDB, its summary row from
+    simulation_runs, and its archived Parquet file from SeaweedFS.
+    Exposed for future use — use src/scripts/delete_simulation.py from
+    the terminal for now.
     """
     parsed_run_id = _parse_run_id(run_id)
 
     async with request.app.state.db_pool.acquire() as conn:
-        result = await conn.execute("DELETE FROM simulations WHERE run_id = $1;", parsed_run_id)
+        async with conn.transaction():
+            result = await conn.execute("DELETE FROM simulations WHERE run_id = $1;", parsed_run_id)
+            await conn.execute("DELETE FROM simulation_runs WHERE run_id = $1;", parsed_run_id)
 
     deleted_rows = int(result.split(" ")[-1])
 
@@ -125,7 +161,7 @@ async def delete_run(request: Request, run_id: str):
     archive_deleted = True
     archive_error = None
     try:
-        request.app.state.s3_client.delete_object(Bucket=SIM_BUCKET, Key=f"{run_id}.csv")
+        request.app.state.s3_client.delete_object(Bucket=SIM_BUCKET, Key=f"{run_id}.parquet")
     except Exception as e:
         archive_deleted = False
         archive_error = str(e)
