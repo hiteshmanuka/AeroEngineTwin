@@ -39,3 +39,5 @@ class SimulationRow(BaseModel):
 SIMULATION_SCHEMA = {
     field: pl.Float32 for field in SimulationRow.model_fields.keys()
 }
+
+SENSOR_COLUMNS = [field for field in SimulationRow.model_fields.keys()]

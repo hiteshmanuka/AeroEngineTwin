@@ -6,7 +6,7 @@ import time
 from src.services import SimulationIngestor, SimulationIngestionError
 from src.services import SimulationDownsampler
 from src.utils import serialize_telemetry
-from src.schemas import SimulationResponse
+from src.schemas import SimulationResponse, SENSOR_COLUMNS
 
 from config import (ENCODING, SIM_BUCKET, 
                     MIN_BUCKETS, MAX_BUCKETS, DEFAULT_BUCKETS, 
@@ -53,6 +53,7 @@ async def get_telemetry(
     start: float = Query(DEFAULT_START),
     end: float = Query(DEFAULT_END),
     target_buckets: int = Query(DEFAULT_BUCKETS),
+    channels: str | None = Query(None, description="Comma-separated channel names; omit for all"),
 ):
     if end <= start:
         raise HTTPException(400, "end must be greater than start")
@@ -60,8 +61,13 @@ async def get_telemetry(
 
     io_start = time.perf_counter()
     async with request.app.state.db_pool.acquire() as conn:
+        requested_channels = [c.strip() for c in channels.split(",")] if channels else SENSOR_COLUMNS
+        invalid = set(requested_channels) - set(SENSOR_COLUMNS)
+        if invalid:
+            raise HTTPException(400, f"Unknown channels: {invalid}")
+        col_list = ", ".join(["t"] + requested_channels)
         rows = await conn.fetch(
-            "SELECT * FROM simulations WHERE run_id = $1 AND t BETWEEN $2 AND $3 ORDER BY t;",
+            f"SELECT {col_list} FROM simulations WHERE run_id = $1 AND t BETWEEN $2 AND $3 ORDER BY t;",
             run_id, start, end,
         )
     io_duration = (time.perf_counter() - io_start) * 1000
@@ -69,8 +75,12 @@ async def get_telemetry(
     if not rows:
         raise HTTPException(404, f"No data for run_id={run_id} in range [{start}, {end}]")
 
-    df = pl.DataFrame([dict(r) for r in rows]).drop(["run_id", "ingested_at"])
+    df = pl.DataFrame([dict(r) for r in rows])
 
+    cols_to_drop = [col for col in ["run_id", "ingested_at"] if col in df.columns]
+    if cols_to_drop:
+        df = df.drop(cols_to_drop)
+        
     downsampler = SimulationDownsampler()
     result_df, mode = downsampler.query_dataframe(df, target_buckets)
 
