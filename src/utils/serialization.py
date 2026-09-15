@@ -19,7 +19,9 @@ def serialize_telemetry(df: pl.DataFrame, run_id: str, mode: str, target_buckets
     
     # 2. Extract actual time range served
     time_min = df.select(pl.col("time").first()).item()
+    time_second = df.select(pl.col("time").head(2).last()).item()
     time_max = df.select(pl.col("time").last()).item()
+    time_step = time_second - time_min
     
     # 3. Columnar Conversion
     # as_series=False instantly converts the Polars columns to flat Python lists
@@ -34,7 +36,8 @@ def serialize_telemetry(df: pl.DataFrame, run_id: str, mode: str, target_buckets
             "run_id": run_id,
             "time_range_served": {
                 "start": time_min,
-                "end": time_max
+                "end": time_max,
+                "step": time_step
             },
             "resolution": {
                 "mode": mode,
@@ -43,7 +46,7 @@ def serialize_telemetry(df: pl.DataFrame, run_id: str, mode: str, target_buckets
             }
         },
         "data": {
-            "time": time_array,
+            # "time_steps": time_array,
             "channels": data_dict
         }
     }

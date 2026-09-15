@@ -4,6 +4,7 @@ from typing import Dict, List, Literal
 class TimeRange(BaseModel):
     start: float
     end: float
+    step: float
 
 class ResolutionMeta(BaseModel):
     mode: Literal["raw", "m4"]
@@ -16,7 +17,7 @@ class SimulationMetadata(BaseModel):
     resolution: ResolutionMeta
 
 class SimulationData(BaseModel):
-    time: List[float]
+    # time: List[float]
     channels: Dict[str, List[float]]
 
 class SimulationResponse(BaseModel):
